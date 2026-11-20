@@ -1,0 +1,15 @@
+.idea/
+.cpm-cache/
+thirdparty/
+cmake-build-*/
+out/
+results/
+__pycache__/
+*.pyc
+imgui.ini
+build/
+
+/runs/
+/viewer/cases/
+/shadow-auto-bias.html
+**/__pycache__/
