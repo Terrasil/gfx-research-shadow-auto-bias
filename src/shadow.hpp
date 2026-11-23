@@ -225,9 +225,9 @@ inline Frame make_frame(const Bvh& mesh, const Light& light, int width, int heig
     return frame;
 }
 
-enum class Method { constant, slope, receiver, numeric, footprint, full, reference };
-inline constexpr std::array method_names{"constant","slope","receiver","numeric","footprint","full","reference"};
-inline constexpr std::array default_params{0.0001f,0.5f,0.000002f,2.0f,2.0f,2.0f,0.0f};
+enum class Method { constant, slope, receiver, numeric, footprint, full, selective, reference };
+inline constexpr std::array method_names{"constant","slope","receiver","numeric","footprint","full","selective","reference"};
+inline constexpr std::array default_params{0.0001f,0.5f,0.000002f,2.0f,2.0f,2.0f,2.0f,0.0f};
 inline constexpr float slope_floor = 0.000002f;
 
 struct Tap {
@@ -303,6 +303,12 @@ inline float global_bias(const Features& f, Method method, float parameter) {
         case Method::numeric: return parameter*f.numeric;
         case Method::footprint: return parameter*(f.numeric+f.footprint);
         case Method::full: return parameter*(f.numeric+f.footprint+f.mismatch);
+        case Method::selective: {
+            // Ablation: only use caster-gradient mismatch when it is small relative
+            // to receiver footprint. Strong mismatch may indicate a true boundary.
+            const float allowance = f.mismatch <= 0.5f * f.footprint ? f.mismatch : 0.0f;
+            return parameter*(f.numeric+f.footprint+allowance);
+        }
         case Method::slope: return slope_floor;
         default: return parameter;
     }

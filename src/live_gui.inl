@@ -181,6 +181,21 @@
             run_action([&] { start_publication(PublicationKind::full); });
         ImGui::EndDisabled();
 
+        ImGui::SeparatorText("Raster bias study");
+        ImGui::BeginDisabled(running);
+        if (ImGui::Button("Run raster smoke test", {-1, 0}))
+            run_action([&] { start_raster("smoke"); });
+        if (ImGui::Button("Run raster quick suite", {-1, 0}))
+            run_action([&] { start_raster("quick"); });
+        if (ImGui::Button("Run raster publication suite", {-1, 0}))
+            run_action([&] { start_raster("paper"); });
+        ImGui::EndDisabled();
+        if (!raster_output_.empty()) {
+            const auto path = path_utf8(raster_output_);
+            ImGui::TextWrapped("%s", path.c_str());
+            if (ImGui::Button("Copy raster output path")) ImGui::SetClipboardText(path.c_str());
+        }
+
         study_controls();
         ImGui::SeparatorText("Output");
         const auto path = path_utf8(publication.output.empty() ? results_ : publication.output);
@@ -205,6 +220,20 @@
         ImGui::SetNextWindowSize({448, std::min(800.0f, viewport->WorkSize.y - 24)}, ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSizeConstraints({380, 320}, {650, std::max(320.0f, viewport->WorkSize.y - 24)});
         if (!ImGui::Begin("Shadow Research")) {
+            ImGui::End();
+            return;
+        }
+
+        if (raster_run_) {
+            ImGui::SeparatorText("Tests");
+            const auto& progress = raster_run_.progress();
+            ImGui::Text("Variants %zu / %zu", progress.completed, progress.total);
+            if (!progress.scene.empty())
+                ImGui::Text("%s / %s", progress.scene.data(), progress.method.data());
+            ImGui::ProgressBar(progress.total ? static_cast<float>(progress.completed) / progress.total : 0.0f, {-1, 0});
+            ImGui::TextWrapped("%s", path_utf8(raster_output_).c_str());
+            if (ImGui::Button("Stop raster study", {-1, 0}))
+                finish_raster("Raster study stopped.");
             ImGui::End();
             return;
         }

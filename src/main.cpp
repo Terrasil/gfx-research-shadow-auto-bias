@@ -2,6 +2,7 @@
 #include "benchmark.hpp"
 #include "experiment_gpu_timer.hpp"
 #include "experiment_output.hpp"
+#include "experiment_run.hpp"
 #include "live_renderer.hpp"
 #include "publication_suite.hpp"
 
@@ -16,6 +17,7 @@
 #include <functional>
 #include <iostream>
 #include <numeric>
+#include <glm/gtc/matrix_inverse.hpp>
 
 int reference_viewer_main(int argc, char** argv);
 
@@ -31,10 +33,10 @@ constexpr float study_split = 0.61f;
 
 class ShadowResearch final : public gfx::research::Application {
 public:
-    ShadowResearch(fs::path shaders, fs::path heightmaps, fs::path results, fs::path check, CheckMode check_mode)
+    ShadowResearch(fs::path shaders, fs::path heightmaps, fs::path results, fs::path check, CheckMode check_mode, std::string raster_profile)
         : Application({.title = "gfx-research-shadow-auto-bias", .width = 1600, .height = 900, .vsync = false}),
           shaders_(std::move(shaders)), heightmaps_(std::move(heightmaps)), results_(std::move(results)),
-          check_(std::move(check)), check_mode_(check_mode) {}
+          check_(std::move(check)), check_mode_(check_mode), raster_profile_(std::move(raster_profile)) {}
 
 private:
     bool on_init() override {
@@ -73,7 +75,7 @@ private:
     }
 
     void on_drop(int count, const char** paths) override {
-        if (count < 1 || timing_.running() || study_preview_) return;
+        if (count < 1 || timing_.running() || study_preview_ || raster_run_) return;
         const std::string_view input(paths[0]);
         const fs::path path(std::u8string(input.begin(), input.end()));
         auto extension = path.extension().string();
@@ -89,21 +91,24 @@ private:
         });
     }
 
-    void overview_camera() {
-        camera_.set_target({0.0f, 5.0f, 0.0f});
-        camera_.set_distance(348.0f);
-        camera_.set_yaw(0.65f);
-        camera_.set_pitch(0.81f);
-        camera_.set_fov(49.0f);
+    static void set_overview_camera(gfx::research::OrbitCamera& camera) {
+        camera.set_target({0.0f, 5.0f, 0.0f});
+        camera.set_distance(348.0f);
+        camera.set_yaw(0.65f);
+        camera.set_pitch(0.81f);
+        camera.set_fov(49.0f);
     }
 
-    void contact_camera() {
-        camera_.set_target({-77.0f, contact_height_, 72.0f});
-        camera_.set_distance(46.0f);
-        camera_.set_yaw(0.65f);
-        camera_.set_pitch(0.64f);
-        camera_.set_fov(49.0f);
+    static void set_contact_camera(gfx::research::OrbitCamera& camera, float contact_height) {
+        camera.set_target({-77.0f, contact_height, 72.0f});
+        camera.set_distance(46.0f);
+        camera.set_yaw(0.65f);
+        camera.set_pitch(0.64f);
+        camera.set_fov(49.0f);
     }
+
+    void overview_camera() { set_overview_camera(camera_); }
+    void contact_camera() { set_contact_camera(camera_, contact_height_); }
 
     void handle_camera_input(const gfx::research::FrameInfo& frame) {
         const auto& io = ImGui::GetIO();
@@ -176,6 +181,17 @@ private:
     }
 
     void on_frame(const gfx::research::FrameInfo& frame) override {
+        if (!raster_profile_.empty()) {
+            auto run = run_raster_study(raster_profile_, results_);
+            while (run.advance()) {}
+            gfx::research::Framebuffer::bind_default();
+            close();
+            return;
+        }
+        if (raster_run_) {
+            advance_raster(frame);
+            return;
+        }
         if (check_mode_ == CheckMode::live) prepare_check_frame(frame);
         else if (check_mode_ == CheckMode::preview) capture_preview_check(frame);
         else handle_camera_input(frame);
@@ -237,6 +253,11 @@ private:
     LiveView study_view_ = LiveView::shaded;
     LightSettings light_;
     std::array<Arm, 2> arms_{{{0, default_params[0]}, {5, default_params[5]}}};
+#include "raster_study.inl"
+
+    ExperimentRun raster_run_;
+    fs::path raster_output_;
+    std::string raster_profile_;
     int terrain_ = 3, radius_ = 0, width_ = 0, height_ = 0;
     float contact_height_ = 0.0f, split_position_ = 0.61f;
     LiveView view_ = LiveView::shaded;
@@ -261,6 +282,7 @@ int main(int argc, char** argv) {
                          "  --results DIR sets the directory for new outputs.\n"
                          "  --publication-quick [--results DIR] runs the 32-case pilot and exports figures.\n"
                          "  --publication-suite [--results DIR] adds 16 production-resolution cases.\n"
+                         "  --raster-study=smoke|quick|paper --results DIR compares raster masks with ray visibility.\n"
                          "  --reference-viewer opens the analytical ray comparison.\n"
                          "  --live-check DIR validates the live 3D scene and saves captures.\n"
                          "  --preview-check DIR runs the quick suite and validates the test preview.\n"
@@ -273,15 +295,20 @@ int main(int argc, char** argv) {
         const bool reference_check = command == "--gl-check" || command == "--headless-gl-check";
         const bool reference = command == "--reference-viewer";
         const bool publication = command == "--publication-quick" || command == "--publication-suite";
+        const bool raster=command.starts_with("--raster-study=");
+        const std::string profile=raster ? std::string(command.substr(15)) : "";
+        if (raster && profile!="smoke" && profile!="quick" && profile!="paper")
+            throw std::runtime_error("Use --raster-study=smoke|quick|paper.");
         const bool choose_results = command == "--results";
         if ((live_check || preview_check || reference_check) && argc != 3)
             throw std::runtime_error("Supply one output directory for the OpenGL check.");
         if (reference && argc != 2) throw std::runtime_error("--reference-viewer takes no arguments.");
-        if (argc > 1 && !live_check && !preview_check && !reference_check && !reference && !publication && !choose_results)
+        if (argc > 1 && !live_check && !preview_check && !reference_check && !reference && !publication && !raster && !choose_results)
             return benchmark_main(argc, argv);
         auto results = lab::default_results_directory(argv[0]);
-        if (choose_results || (publication && argc > 2)) {
-            const int flag = publication ? 2 : 1;
+        if (raster && argc==2) results /= "raster-"+profile;
+        if (choose_results || ((publication || raster) && argc > 2)) {
+            const int flag = publication || raster ? 2 : 1;
             if (argc != flag + 2 || std::string_view(argv[flag]) != "--results")
                 throw std::runtime_error("Use --results DIR to select an output directory.");
             results = fs::absolute(fs::path(argv[flag + 1])).lexically_normal();
@@ -309,7 +336,7 @@ int main(int argc, char** argv) {
         const auto check = live_check || preview_check ? fs::absolute(fs::path(argv[2])) : fs::path{};
         const auto mode = preview_check ? lab::CheckMode::preview : live_check ? lab::CheckMode::live : lab::CheckMode::none;
         if (preview_check) results = check / "results";
-        return lab::ShadowResearch(shaders, maps, results, check, mode).run();
+        return lab::ShadowResearch(shaders, maps, results, check, mode, profile).run();
     } catch (const std::exception& error) {
         std::cerr << "gfx-research-shadow-auto-bias: " << error.what() << '\n';
         return 1;

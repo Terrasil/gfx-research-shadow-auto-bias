@@ -50,7 +50,7 @@ void main() {
     vec4 pos = texelFetch(positions,pixel,0);
     color = vec4(0.0,0.0,0.0,1.0);
     if (pos.w < 2.0) return;
-#if METHOD == 6
+#if METHOD == 7
     color.r = step(3.0,pos.w);
 #else
     float cell = 1.0/float(mapSize);
@@ -69,10 +69,18 @@ void main() {
 #if METHOD >= 4
     bias += 0.9*dot(abs(g.xy)+g.zw,f*0.5);
 #endif
-#if METHOD == 5
+#if METHOD == 5 || METHOD == 6
     bool valid;
     vec2 caster = casterGradient(center,valid);
-    if (valid) bias += 0.9*dot(abs(g.xy-caster),f*0.5);
+    if (valid) {
+        float mismatch = 0.9*dot(abs(g.xy-caster),f*0.5);
+#if METHOD == 6
+        float receiverFootprint = 0.9*dot(abs(g.xy)+g.zw,f*0.5);
+        if (mismatch <= 0.5*receiverFootprint) bias += mismatch;
+#else
+        bias += mismatch;
+#endif
+    }
 #endif
     bias *= parameter;
 #elif METHOD == 1

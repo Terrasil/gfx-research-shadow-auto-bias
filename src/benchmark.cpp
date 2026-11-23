@@ -43,7 +43,7 @@ std::vector<Variant> sweep() {
         result.push_back({Method::slope,m});
     for (float b : {0.0000005f,0.000002f,0.00001f,0.00003f,0.0001f,0.0003f,0.001f,0.003f})
         result.push_back({Method::receiver,b});
-    for (auto m : {Method::numeric,Method::footprint,Method::full})
+    for (auto m : {Method::numeric,Method::footprint,Method::full,Method::selective})
         for (float s : {1.0f,2.0f,3.0f}) result.push_back({m,s});
     return result;
 }
@@ -202,13 +202,13 @@ bool null_tests(const fs::path& dest, const Heightmap& map, int jobs, std::stop_
         if (progress) progress({0, "Same-plane null test", cfg.preview(), std::nullopt});
         const ShadowMap sm(mesh,light,256,alpha,jobs);
         const std::vector<Variant> methods{{Method::constant,0.0001f},{Method::slope,0.5f},
-            {Method::receiver,0.000002f},{Method::numeric,2.0f},{Method::footprint,2.0f},{Method::full,2.0f}};
+            {Method::receiver,0.000002f},{Method::numeric,2.0f},{Method::footprint,2.0f},{Method::full,2.0f},{Method::selective,2.0f}};
         report_case(cfg,ref,sm,out,methods);
         for (const auto& p : ref.pixels) {
             if (p.category != 2) continue;
             const auto f = sample_features(sm,p,0);
             if (shadow_count(f,Method::numeric,2.0f) || shadow_count(f,Method::footprint,2.0f)
-                || shadow_count(f,Method::full,2.0f)) throw std::runtime_error("Same-plane null failed.");
+                || shadow_count(f,Method::full,2.0f) || shadow_count(f,Method::selective,2.0f)) throw std::runtime_error("Same-plane null failed.");
         }
     }
     for (int alpha : {0,8,16}) for (double x : {-1.0,-0.99,-0.87,-0.3,0.0,0.22,0.96,1.0}) {

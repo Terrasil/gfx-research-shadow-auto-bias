@@ -52,8 +52,8 @@ struct Arm {
     float parameter = default_params[0];
 };
 
-inline constexpr std::array<const char*, 7> method_labels{
-    "Constant depth", "Slope scale", "Receiver plane", "Numerics", "Footprint", "Auto", "Ray reference"
+inline constexpr std::array<const char*, 8> method_labels{
+    "Constant depth", "Slope scale", "Receiver plane", "Numerics", "Footprint", "Auto", "Selective gradient", "Ray reference"
 };
 inline constexpr std::array<const char*, 4> view_labels{"Shaded", "Reference difference", "Visibility mask", "Bias magnitude"};
 
